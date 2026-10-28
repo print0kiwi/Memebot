@@ -1,0 +1,3 @@
+# Copy candidates go here. Generate with:
+#   python analyze_wallets.py --helius-key YOUR_KEY
+# Until then the bot tracks (logs) wallets but copies none.
