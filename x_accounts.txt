@@ -1,0 +1,12 @@
+# X accounts to monitor, one per line (handle or x.com URL)
+orangie
+binzy0x
+JfullPort
+whalewatchalert
+qhoass
+kimchi1x
+mellometrics
+OnlyLJC
+elonmusk
+realDonaldTrump
+DaniWorldwide

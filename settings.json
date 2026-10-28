@@ -1,0 +1,23 @@
+{
+  "buy_sol": 0.5,
+  "copy_buy_sol": 0.5,
+  "max_open_positions": 5,
+  "take_profit_pct": 100,
+  "stop_loss_pct": 25,
+  "trailing_stop_pct": 25,
+  "max_hold_seconds": 900,
+  "max_dev_share": 0.3,
+  "allow_dev_selling": false,
+  "min_unique_buyers": 5,
+  "max_top_buyer_pct": 100,
+  "min_net_inflow_sol": 0.5,
+  "watch_seconds": 1,
+  "max_age_seconds": 3600,
+  "min_mcap_sol": 30,
+  "max_mcap_sol": 1000,
+  "copy_max_mcap_sol": 600,
+  "max_bundle_pct": 20,
+  "bundle_window_ms": 1500,
+  "min_social_authors": 0,
+  "social_window_min": 30
+}

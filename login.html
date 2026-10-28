@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memebot · sign in</title>
+<link rel="icon" href="/assets/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/icon-192.png">
+<meta name="theme-color" content="#2a2531">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="referrer" content="no-referrer">
+<style>
+:root{--bg:#2a2531;--bg2:#1a1720;--panel:rgba(18,15,23,.78);--line:rgba(226,214,255,.12);--fg:#ece7f3;--mut:#9b92ab;
+  --down:#ff5f7a;--pink:#ff4fa3;--pink2:#ffa6ce;
+  --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}
+html{min-height:100%;background:radial-gradient(900px 500px at 70% -10%,rgba(255,79,163,.16),transparent 60%),
+  radial-gradient(700px 500px at 0% 110%,rgba(143,182,255,.10),transparent 60%),var(--bg2)}
+body{margin:0;min-height:100vh;min-height:100dvh;color:var(--fg);font:15px/1.45 var(--sans);
+  display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px 22px 22px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.avatar{width:46px;height:46px;border-radius:12px;object-fit:cover;border:1px solid var(--line);
+  box-shadow:0 0 0 1px rgba(255,79,163,.25),0 6px 18px rgba(0,0,0,.5)}
+.brand{font:700 18px var(--mono);letter-spacing:.14em}.brand b{color:var(--pink)}
+.sub{color:var(--mut);font-size:13px;margin:2px 0 18px}
+label{display:block;font-size:12px;color:var(--mut);margin:0 0 6px;letter-spacing:.04em;text-transform:uppercase}
+.row{display:flex;gap:8px}
+input{flex:1;min-width:0;font:600 17px var(--mono);letter-spacing:.06em;color:var(--fg);background:rgba(0,0,0,.35);
+  border:1px solid var(--line);border-radius:10px;padding:12px 12px;outline:none}
+input:focus{border-color:rgba(255,79,163,.6);box-shadow:0 0 0 3px rgba(255,79,163,.15)}
+button{font:600 14px var(--sans);color:var(--fg);background:rgba(36,31,44,.9);border:1px solid var(--line);border-radius:10px;
+  padding:0 14px;cursor:pointer}
+button.go{width:100%;margin-top:14px;padding:13px;color:#fff;border-color:var(--pink);background:rgba(255,79,163,.28);font-size:15px}
+button:disabled{opacity:.5;cursor:default}
+input::placeholder{font-size:12px;letter-spacing:.02em;color:#6b6378}
+.err{min-height:20px;margin-top:12px;color:var(--down);font-size:13px}
+.note{margin-top:14px;color:var(--mut);font-size:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="on">
+  <div class="top"><img class="avatar" src="/assets/neet-cat.webp" alt=""><div class="brand">MEME<b>BOT</b></div></div>
+  <div class="sub">Remote control. Enter the access key from your computer.</div>
+  <label for="k">Access key</label>
+  <div class="row">
+    <input id="k" name="password" type="password" autocomplete="current-password" autocapitalize="characters"
+           autocorrect="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" required>
+    <button type="button" id="show" aria-label="Show or hide the key">Show</button>
+  </div>
+  <button class="go" id="go" type="submit">Sign in</button>
+  <div class="err" id="err" role="alert"></div>
+  <div class="note">On your computer, run <b>./memebot remote</b> to see the key. Signing in lasts 30 days on this device.</div>
+</form>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+$("show").addEventListener("click", () => {
+  const p = $("k").type === "password"; $("k").type = p ? "text" : "password"; $("show").textContent = p ? "Hide" : "Show";
+});
+$("f").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("err").textContent = ""; $("go").disabled = true; $("go").textContent = "Signing in…";
+  try {
+    const r = await fetch("/login", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({key: $("k").value})});
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) { location.replace("/"); return; }
+    $("err").textContent = j.error || "Couldn't sign in.";
+  } catch (x) { $("err").textContent = "Couldn't reach the bot. Is it running, and are you on the same network?"; }
+  $("go").disabled = false; $("go").textContent = "Sign in";
+});
+</script>
+</body>
+</html>

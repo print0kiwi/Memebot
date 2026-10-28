@@ -1,0 +1,34 @@
+# Which Discord servers the bot reads for coin calls.
+#
+# One server (guild) ID or channel ID per line. Channel IDs let you read one channel
+# instead of a whole server, which is usually what you want for a "calls" channel.
+# Leave this file with no IDs to read EVERY server your bot has been added to.
+#
+# ---------------------------------------------------------------------------
+# How to fill it in
+#   1. Your bot must be a member of the server. Invite it from
+#      discord.com/developers/applications -> your app -> OAuth2 -> URL Generator
+#      scopes: bot      permissions: View Channels, Read Message History
+#      (you need "Manage Server" in that server to add a bot to it)
+#   2. Turn ON "Message Content Intent": same page -> Bot -> Privileged Gateway Intents.
+#      Without it Discord sends empty messages and nothing is detected.
+#   3. Run:  python discord_signals.py --servers     -> prints each server's ID
+#      Or in Discord: Settings -> Advanced -> Developer Mode on, then
+#      right-click the server or channel -> Copy Server ID / Copy Channel ID.
+#   4. Paste the IDs below and restart the bot.
+#
+# ---------------------------------------------------------------------------
+# Servers you asked for (these are invite links; the bot needs the numeric IDs above):
+#   https://discord.gg/memecoins
+#   https://discord.gg/e3PSaRxWn
+#   https://discord.gg/schANJUTX
+#
+# A bot can only read a server it has been added to. For a public server you don't
+# run, ask an admin to add your bot, or use one that already allows bots.
+# Reading a server with your own user account instead of a bot account is against
+# Discord's terms of service and gets accounts banned, so this bot does not do it.
+# ---------------------------------------------------------------------------
+
+# Example (delete the # and use your real IDs):
+# 1013958072024207470     # Memecoins
+# 1157320841234567890     # #calls channel only

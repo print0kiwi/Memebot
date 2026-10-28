@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# Memebot launcher: double-click it (or run ./memebot) to get a menu.
+#   ./memebot                 menu
+#   ./memebot paper           run the bot in paper mode (fake money) + dashboard
+#   ./memebot demo            dashboard with simulated trades (no wallet/internet)
+#   ./memebot live            REAL trading (asks you to confirm)
+#   ./memebot test            run the tests
+#   ./memebot wallets         score tracked wallets (needs HELIUS_API_KEY in .env)
+#   ./memebot x               start the X (Twitter) monitor
+#   ./memebot xreport         how each X account's calls performed
+#   ./memebot discord         watch your Discord servers for coin calls
+#   ./memebot dservers        list the Discord servers your bot can read (with IDs)
+#   ./memebot dreport         which servers and callers actually made money
+#   ./memebot remote          control the bot from your phone: show address + access key
+#   ./memebot remote on|off|new   turn phone access on/off, or make a new key
+#   ./memebot demo --remote   try the phone login with simulated trades
+#   ./memebot research [YYYY-MM-DD]   download market data since that date (default 2026-01-01), test more
+#                             aggressive settings on it, and offer what held up in the dashboard
+#   ./memebot review [hours]  what the bot's self-review sees in its recent trades (changes nothing)
+#   ./memebot export          make solana-memebot-github.zip (secrets left out and scanned for) for GitHub
+#   ./memebot portable        make solana-memebot-portable.zip for a flash drive (adds your settings + history, no keys)
+#   ./memebot install-shortcut   add "Memebot" to your app menu and desktop
+set -uo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+cd "$DIR"
+VENV="${MEMEBOT_VENV:-$DIR/.venv}"
+# On a flash drive (FAT32/exFAT/NTFS) a Python environment can't live on the drive: keep it on this computer.
+if [[ -z "${MEMEBOT_VENV:-}" && ! -x "$DIR/.venv/bin/python" ]]; then
+  case "$(stat -f -c %T "$DIR" 2>/dev/null)" in
+    msdos|vfat|fat*|exfat|fuseblk|ntfs*)
+      VENV="${XDG_DATA_HOME:-$HOME/.local/share}/memebot/venv-$(printf %s "$DIR" | sha256sum | cut -c1-8)" ;;
+  esac
+fi
+B=$'\e[1m'; G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; C=$'\e[36m'; N=$'\e[0m'
+
+die() { echo "${R}$*${N}"; pause_if_menu; exit 1; }
+pause_if_menu() { [[ "${MENU:-0}" == 1 ]] && read -rp "Press Enter to continue…" _ || true; }
+
+find_python() {
+  for p in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$p" >/dev/null 2>&1 && "$p" -c 'import sys; sys.exit(sys.version_info < (3,10))' 2>/dev/null; then
+      echo "$p"; return 0
+    fi
+  done
+  return 1
+}
+
+setup() {
+  local py
+  py="$(find_python)" || die "Python 3.10+ is required. Install it (e.g. sudo pacman -S python), then try again."
+  if [[ ! -x "$VENV/bin/python" ]]; then
+    echo "${C}First run: creating a Python environment in .venv …${N}"
+    mkdir -p "$(dirname "$VENV")"
+    "$py" -m venv "$VENV" 2>/dev/null || { rm -rf "$VENV"; "$py" -m venv --copies "$VENV"; } \
+      || die "Couldn't create the environment (on Debian/Ubuntu: sudo apt install python3-venv)."
+  fi
+  local want have
+  want="$(sha256sum requirements.txt | cut -d' ' -f1)"
+  have="$(cat "$VENV/.requirements.sha" 2>/dev/null || true)"
+  if [[ "$want" != "$have" ]] && "$VENV/bin/python" -c 'import websockets, httpx, dotenv, solders' 2>/dev/null; then
+    echo "$want" > "$VENV/.requirements.sha"; have="$want"     # already installed
+  fi
+  if [[ "$want" != "$have" ]]; then
+    echo "${C}Installing packages (one time) …${N}"
+    "$VENV/bin/python" -m pip install -q --upgrade pip >/dev/null 2>&1 || true
+    "$VENV/bin/python" -m pip install -q -r requirements.txt || die "Package install failed. Check your internet connection and try again."
+    echo "$want" > "$VENV/.requirements.sha"
+  fi
+  if [[ ! -f .env ]]; then
+    cp .env.example .env && chmod 600 .env 2>/dev/null
+    echo "${Y}Created .env from the template. Open it to add your keys (Discord, Helius, X).${N}"
+  fi
+  PY="$VENV/bin/python"
+}
+
+env_has() {  # env_has KEY -> true if KEY has a non-empty value in .env (never prints it)
+  grep -Eq "^${1}=.+" .env 2>/dev/null
+}
+
+run_paper() {
+  echo "${G}${B}Starting in PAPER mode${N} (no real money). Dashboard: http://localhost:${DASHBOARD_PORT:-8787}"
+  echo "Stop with Ctrl+C."
+  LIVE_TRADING=false "$PY" bot.py
+}
+
+run_demo() {
+  echo "${C}Demo dashboard with simulated trades: http://localhost:${DASHBOARD_PORT:-8787}${N}  (Ctrl+C to stop)"
+  ( sleep 2; command -v xdg-open >/dev/null && xdg-open "http://localhost:${DASHBOARD_PORT:-8787}" >/dev/null 2>&1 ) &
+  "$PY" dashboard.py --demo "$@"
+}
+
+run_remote() {
+  case "${1:-show}" in
+    show|on|off|new) "$PY" remote.py "${1:-show}" ;;
+    *) die "Usage: ./memebot remote [on|off|new]" ;;
+  esac
+}
+
+run_live() {
+  env_has BOT_WALLET_PRIVATE_KEY || die "BOT_WALLET_PRIVATE_KEY is empty in .env. Add your dedicated bot wallet's key first (see README)."
+  echo
+  echo "${R}${B}LIVE TRADING${N}${R}: the bot will buy and sell with REAL SOL from your bot wallet.${N}"
+  echo "Limits: max 0.5 SOL per trade, max 5 open trades. Make sure paper mode was profitable first."
+  read -rp "Type LIVE to start, anything else to cancel: " ans
+  [[ "$ans" == "LIVE" ]] || { echo "Cancelled."; return; }
+  LIVE_TRADING=true "$PY" bot.py
+}
+
+run_tests() {
+  "$PY" test_strategy.py && "$PY" test_social.py && "$PY" test_remote.py && "$PY" test_bot.py \
+    && "$PY" test_export.py && "$PY" test_review.py && (cd backtest && "$PY" test_sweep.py >/dev/null && echo "all sweep tests passed")
+}
+
+run_research() {
+  local start="${1:-2026-01-01}"
+  if [[ -z "$(ls -A backtest/data/ohlcv 2>/dev/null)" ]]; then
+    echo "${C}Downloading market data since $start from GeckoTerminal (free, rate-limited: this takes a while)."
+    echo "You can stop it with Ctrl+C and run this again; it picks up where it left off.${N}"
+    (cd backtest && "$PY" download_data.py --start "$start" --out data) || die "The download failed. Check your internet connection and run this again."
+  fi
+  (cd backtest && "$PY" sweep.py --data data --start "$start" --out ../research_result.json) || return 1
+  echo
+  echo "Open the dashboard -> Strategy settings -> Edit -> Load a profile -> Research result (if one is offered)."
+}
+
+run_export() { "$PY" export_zip.py; }
+
+run_discord() {
+  env_has DISCORD_BOT_TOKEN || die "DISCORD_BOT_TOKEN is empty in .env. Create a bot at discord.com/developers/applications, turn on the Message Content Intent, invite it to your servers, then paste its token into .env."
+  if [[ "${1:-}" == "--servers" ]]; then
+    "$PY" discord_signals.py --servers
+  else
+    echo "${C}Watching your Discord servers for coin calls. Ctrl+C to stop.${N}"
+    echo "Edit discord_servers.txt to choose which servers are read."
+    "$PY" discord_signals.py --watch
+  fi
+}
+
+run_wallets() {
+  local args=(--days "${1:-30}")
+  [[ -f wallet_trades.csv ]] && args+=(--bot-log wallet_trades.csv)
+  if env_has HELIUS_API_KEY; then
+    set -a; source <(grep -E '^HELIUS_API_KEY=' .env); set +a
+    args+=(--helius-key "$HELIUS_API_KEY")
+  elif [[ ! -f wallet_trades.csv ]]; then
+    die "Add HELIUS_API_KEY to .env (free at helius.dev), or run the bot for a while first so wallet_trades.csv exists."
+  fi
+  "$PY" analyze_wallets.py "${args[@]}"
+}
+
+install_shortcut() {
+  local apps="$HOME/.local/share/applications" file
+  mkdir -p "$apps"
+  file="$apps/memebot.desktop"
+  cat > "$file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Memebot
+Comment=Solana meme coin bot + live dashboard
+Exec="$DIR/memebot"
+Path=$DIR
+Terminal=true
+Icon=utilities-terminal
+Categories=Finance;Utility;
+EOF
+  chmod +x "$file"
+  if [[ -d "$HOME/Desktop" ]]; then
+    cp "$file" "$HOME/Desktop/memebot.desktop" && chmod +x "$HOME/Desktop/memebot.desktop"
+    command -v gio >/dev/null && gio set "$HOME/Desktop/memebot.desktop" metadata::trusted true 2>/dev/null || true
+  fi
+  command -v update-desktop-database >/dev/null && update-desktop-database "$apps" 2>/dev/null || true
+  echo "${G}Added 'Memebot' to your app menu${N}$([[ -d "$HOME/Desktop" ]] && echo " and Desktop")."
+}
+
+menu() {
+  MENU=1
+  trap ':' INT   # Ctrl+C stops the running tool and returns here instead of closing the window
+  while true; do
+    clear 2>/dev/null || true
+    echo "${B}  MEME${G}BOT${N}   $(env_has LIVE_TRADING && grep -q '^LIVE_TRADING=true' .env && echo "${R}(.env says LIVE)${N}")"
+    echo
+    echo "  1) Run bot: PAPER mode (fake money)   + live dashboard"
+    echo "  2) Dashboard DEMO (simulated trades)"
+    echo "  3) Run bot: ${R}LIVE${N} (real SOL)"
+    echo "  4) X monitor (Twitter signals)"
+    echo "  5) X accounts report"
+    echo "  6) Score tracked wallets"
+    echo "  7) Discord: watch servers for coin calls"
+    echo "  8) Discord: report (which servers/callers pay off)"
+    echo "  9) Discord: list servers my bot can read"
+    echo " 10) Run tests"
+    echo " 11) Edit settings (.env)"
+    echo " 12) Add app-menu / desktop shortcut"
+    echo " 13) Phone remote control: address + access key"
+    echo " 14) Research: test aggressive settings on this year's data"
+    echo " 15) Make a zip for GitHub (secrets left out)"
+    echo " 16) Make a zip for a flash drive (settings + history, no keys)"
+    echo "  0) Quit"
+    echo
+    read -rp "  Choose: " c
+    case "$c" in
+      1) run_paper; pause_if_menu ;;
+      2) run_demo; pause_if_menu ;;
+      3) run_live; pause_if_menu ;;
+      4) "$PY" x_monitor.py; pause_if_menu ;;
+      5) "$PY" x_monitor.py --report; pause_if_menu ;;
+      6) run_wallets; pause_if_menu ;;
+      7) run_discord; pause_if_menu ;;
+      8) "$PY" analyze_discord.py; pause_if_menu ;;
+      9) run_discord --servers; pause_if_menu ;;
+      10) run_tests; pause_if_menu ;;
+      11) "${EDITOR:-$(command -v nano || command -v vi)}" .env ;;
+      12) install_shortcut; pause_if_menu ;;
+      13) run_remote; pause_if_menu ;;
+      14) run_research; pause_if_menu ;;
+      15) run_export; pause_if_menu ;;
+      16) "$PY" export_zip.py --portable; pause_if_menu ;;
+      0|q|"") exit 0 ;;
+    esac
+  done
+}
+
+case "${1:-menu}" in
+  install-shortcut) install_shortcut; exit 0 ;;
+  help|-h|--help) awk 'NR>1 && /^#/{print; next} NR>1{exit}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+setup
+case "${1:-menu}" in
+  menu) menu ;;
+  paper) run_paper ;;
+  demo) shift; run_demo "$@" ;;
+  remote) shift; run_remote "${1:-show}" ;;
+  live) run_live ;;
+  test) run_tests ;;
+  wallets) shift; run_wallets "${1:-30}" ;;
+  x) "$PY" x_monitor.py ;;
+  xreport) "$PY" x_monitor.py --report ;;
+  discord) run_discord ;;
+  dservers) run_discord --servers ;;
+  dreport) "$PY" analyze_discord.py ;;
+  research) shift; run_research "${1:-2026-01-01}" ;;
+  review) shift; "$PY" review.py --hours "${1:-24}" ;;
+  export) run_export ;;
+  portable) "$PY" export_zip.py --portable ;;
+  *) echo "Unknown command: $1"; awk 'NR>1 && /^#/{print; next} NR>1{exit}' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
